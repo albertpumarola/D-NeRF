@@ -1,4 +1,4 @@
-<img src='https://www.albertpumarola.com/images/2021/D-NeRF/dnerf.gif' align="right" width=90>
+<img src='https://www.albertpumarola.com/images/2021/D-NeRF/teaser2.gif' align="right" width=400>
 
 # D-NeRF: Neural Radiance Fields for Dynamic Scenes
 ### [[Project]](https://www.albertpumarola.com/research/D-NeRF/index.html)[ [Paper]](https://arxiv.org/abs/2011.13961) 
