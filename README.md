@@ -22,7 +22,7 @@ cd ..
 ```
 
 ## Download Pre-trained Weights
- You can download the pre-trained models from [drive](https://drive.google.com/file/d/1VN-_DkRLL1khDVScQJEaohpbA2gC2I2K/view?usp=sharing) or [dropbox](https://www.dropbox.com/s/25sveotbx2x7wap/logs.zip?dl=0). Place the downloaded directory in `./logs` in order to test it later. See the following directory structure for an example:
+ You can download the pre-trained models from [drive](https://drive.google.com/file/d/1VN-_DkRLL1khDVScQJEaohpbA2gC2I2K/view?usp=sharing) or [dropbox](https://www.dropbox.com/s/25sveotbx2x7wap/logs.zip?dl=0). Unzip the downloaded data to the project root dir in order to test it later. See the following directory structure for an example:
 ```
 ├── logs 
 │   ├── mutant
@@ -31,7 +31,7 @@ cd ..
 ```
 
 ## Download Dataset
- You can download the datasets from [drive](https://drive.google.com/file/d/19Na95wk0uikquivC7uKWVqllmTx-mBHt/view?usp=sharing) or [dropbox](https://www.dropbox.com/s/0bf6fl0ye2vz3vr/data.zip?dl=0). Place the downloaded directory in `./data` in order to train. See the following directory structure for an example:
+ You can download the datasets from [drive](https://drive.google.com/file/d/19Na95wk0uikquivC7uKWVqllmTx-mBHt/view?usp=sharing) or [dropbox](https://www.dropbox.com/s/0bf6fl0ye2vz3vr/data.zip?dl=0). Unzip the downloaded data to the project root dir in order to train. See the following directory structure for an example:
 ```
 ├── data 
 │   ├── mutant
@@ -53,7 +53,7 @@ First download pre-trained weights and dataset. Then,
 ```
 python run_dnerf.py --config configs/mutant.txt --render_only --render_test
 ```
-To quantitatively evaluate model run `metrics.ipynb` notebook
+This command will run the `mutant` experiment. When finished, results are saved to `./logs/mutant/renderonly_test_799999` To quantitatively evaluate model run `metrics.ipynb` notebook
 
 ## Train
 First download the dataset. Then,
