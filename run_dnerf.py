@@ -36,6 +36,37 @@ def batchify(fn, chunk):
         return torch.cat(out_list, 0), torch.cat(dx_list, 0)
     return ret
 
+def run_time_network(inputs, frame_time, fn, embed_fn, embedtime_fn, netchunk=1024*64, embd_time_discr=True):
+    """Prepares inputs and applies only the time network component of 'fn'.
+    inputs: N_rays x N_points_per_ray x 3
+    frame_time: N_rays x 1
+    """
+
+    assert len(torch.unique(frame_time)) == 1, "Only accepts all points from same time"
+    cur_time = torch.unique(frame_time)[0]
+
+    # embed position
+    inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
+    embedded = embed_fn(inputs_flat)
+
+    # embed time
+    if embd_time_discr:
+        B, N, _ = inputs.shape
+        input_frame_time = frame_time[:, None].expand([B, N, 1])
+        input_frame_time_flat = torch.reshape(input_frame_time, [-1, 1])
+        embedded_time = embedtime_fn(input_frame_time_flat)
+
+    else:
+        assert NotImplementedError
+
+    num_batches = inputs.shape[0]
+
+    dx_list = []
+    for i in range(0, num_batches, netchunk):
+        dx = fn.query_time(embedded, embedded_time, fn._time, fn._time_out)
+        dx_list += [dx]
+
+    return torch.cat(dx_list, 0)
 
 def run_network(inputs, viewdirs, frame_time, fn, embed_fn, embeddirs_fn, embedtime_fn, netchunk=1024*64,
                 embd_time_discr=True):
@@ -237,6 +268,12 @@ def create_nerf(args):
                                                                 netchunk=args.netchunk,
                                                                 embd_time_discr=args.nerf_type!="temporal")
 
+    displacement_query_fn = lambda inputs, ts, network_fn : run_time_network(inputs, ts, network_fn,
+                                                                embed_fn=embed_fn,
+                                                                embedtime_fn = embedtime_fn,
+                                                                netchunk=args.netchunk,
+                                                                embd_time_discr=args.nerf_type!="temporal")
+
     # Create optimizer
     optimizer = torch.optim.Adam(params=grad_vars, lr=args.lrate, betas=(0.9, 0.999))
 
@@ -279,6 +316,7 @@ def create_nerf(args):
 
     render_kwargs_train = {
         'network_query_fn' : network_query_fn,
+        'displacement_query_fn' : displacement_query_fn,
         'perturb' : args.perturb,
         'N_importance' : args.N_importance,
         'network_fine': model_fine,
@@ -363,7 +401,8 @@ def render_rays(ray_batch,
                 verbose=False,
                 pytest=False,
                 z_vals=None,
-                use_two_models_for_fine=False):
+                use_two_models_for_fine=False,
+                **kwargs):
     """Volumetric rendering.
     Args:
       ray_batch: array of shape [batch_size, ...]. All information necessary
@@ -561,8 +600,12 @@ def config_parser():
                         default=.5, help='fraction of img taken for central crops')
     parser.add_argument("--add_tv_loss", action='store_true',
                         help='evaluate tv loss')
+    parser.add_argument("--add_deformation_regularization", action='store_true',
+                        help='evaluate deformation regularization')
     parser.add_argument("--tv_loss_weight", type=float,
                         default=1.e-4, help='weight of tv loss')
+    parser.add_argument("--deformation_regularization_lambda", type=float,
+                        default=1.e-2, help='weight of deformation regularization')
 
     # dataset options
     parser.add_argument("--dataset_type", type=str, default='llff', 
@@ -599,6 +642,9 @@ def config_parser():
                         help='frequency of tensorboard image logging')
     parser.add_argument("--i_weights", type=int, default=100000,
                         help='frequency of weight ckpt saving')
+    parser.add_argument("--i_latest", type=int, default=1000,
+                        help='frequency of weight ckpt saving for the file indicated as \'latest\'.\
+                            This ckpt gets overwritten at the specified interval')
     parser.add_argument("--i_testset", type=int, default=200000,
                         help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=200000,
@@ -729,6 +775,7 @@ def train():
 
     # Summary writers
     writer = SummaryWriter(os.path.join(basedir, 'summaries', expname))
+    print("tensorboard is located at: {0}".format(os.path.join(basedir, 'summaries', expname)))
     
     start = start + 1
     for i in trange(start, N_iters):
@@ -829,7 +876,12 @@ def train():
                     tv_loss += ((extras['position_delta_0'] - extras_next['position_delta_0']).pow(2)).sum()
             tv_loss = tv_loss * args.tv_loss_weight
 
-        loss = img_loss + tv_loss
+        deformation_regularization_loss = 0
+        if args.add_deformation_regularization:
+            deformation_regularization_loss = torch.nn.functional.mse_loss(extras['position_delta'], torch.zeros_like(extras['position_delta']))
+            deformation_regularization_loss = deformation_regularization_loss * args.deformation_regularization_lambda
+
+        loss = img_loss + tv_loss + deformation_regularization_loss
         psnr = mse2psnr(img_loss)
 
         if 'rgb0' in extras:
@@ -841,7 +893,12 @@ def train():
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
-            loss.backward()
+            try:
+                loss.backward()
+            except Exception as e:
+                print(f"error during backward step! Pos delta shape:{extras['position_delta'].shape}")
+                print(extras['position_delta'])
+                raise e
 
         optimizer.step()
 
@@ -874,10 +931,27 @@ def train():
             torch.save(save_dict, path)
             print('Saved checkpoints at', path)
 
+        if i%args.i_latest==0:
+            path = os.path.join(basedir, expname, 'latest.tar')
+            save_dict = {
+                'global_step': global_step,
+                'network_fn_state_dict': render_kwargs_train['network_fn'].state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }
+            if render_kwargs_train['network_fine'] is not None:
+                save_dict['network_fine_state_dict'] = render_kwargs_train['network_fine'].state_dict()
+
+            if args.do_half_precision:
+                save_dict['amp'] = amp.state_dict()
+            torch.save(save_dict, path)
+            print('Saved checkpoints at', path)
+
         if i % args.i_print == 0:
             tqdm_txt = f"[TRAIN] Iter: {i} Loss_fine: {img_loss.item()} PSNR: {psnr.item()}"
             if args.add_tv_loss:
                 tqdm_txt += f" TV: {tv_loss.item()}"
+            if args.add_deformation_regularization:
+                tqdm_txt += f" Def_reg: {deformation_regularization_loss.item()}"
             tqdm.write(tqdm_txt)
 
             writer.add_scalar('loss', img_loss.item(), i)
@@ -887,12 +961,16 @@ def train():
                 writer.add_scalar('psnr0', psnr0.item(), i)
             if args.add_tv_loss:
                 writer.add_scalar('tv', tv_loss.item(), i)
+            if args.add_deformation_regularization:
+                writer.add_scalar('Def_reg', deformation_regularization_loss.item(), i)
 
         del loss, img_loss, psnr, target_s
         if 'rgb0' in extras:
             del img_loss0, psnr0
         if args.add_tv_loss:
             del tv_loss
+        if args.add_deformation_regularization:
+            del deformation_regularization_loss
         del rgb, disp, acc, extras
 
         if i%args.i_img==0:

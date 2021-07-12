@@ -16,6 +16,7 @@ N_iter = 800000
 N_samples = 64
 N_importance = 128
 N_rand = 500
+chunk = 1024
 testskip = 1
 
 precrop_iters = 500

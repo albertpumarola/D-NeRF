@@ -1,10 +1,10 @@
-expname = mutant
+expname = bouncingballs_l2
 basedir = ./logs
-datadir = ./data/mutant
+datadir = ./data/bouncingballs
 dataset_type = blender
 
 nerf_type = direct_temporal
-no_batching = False
+no_batching = True
 not_zero_canonical = False
 use_viewdirs = True
 
@@ -19,10 +19,15 @@ N_rand = 500
 chunk = 1024
 testskip = 1
 
+i_weights = 50000
+i_latest = 1000
+
 precrop_iters = 500
-precrop_iters_time = 100000
+precrop_iters_time = 10000
 precrop_frac = 0.5
 
 half_res = True
 do_half_precision = False
 
+add_deformation_regularization = True
+deformation_regularization_lambda = 1.e-4
