@@ -3,7 +3,6 @@ torch.autograd.set_detect_anomaly(True)
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from torchsearchsorted import searchsorted
 
 
 # Misc
@@ -260,7 +259,7 @@ def hsv_to_rgb(h, s, v):
 
 # Ray helpers
 def get_rays(H, W, focal, c2w):
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))  # pytorch's meshgrid has indexing='ij'
+    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H), indexing='ij')  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
     dirs = torch.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -torch.ones_like(i)], -1)
@@ -329,7 +328,7 @@ def sample_pdf(bins, weights, N_samples, det=False, pytest=False):
 
     # Invert CDF
     u = u.contiguous()
-    inds = searchsorted(cdf, u, side='right')
+    inds = torch.searchsorted(cdf, u, side='right')
     below = torch.max(torch.zeros_like(inds-1), inds-1)
     above = torch.min((cdf.shape[-1]-1) * torch.ones_like(inds), inds)
     inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
